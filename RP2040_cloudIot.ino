@@ -12,6 +12,7 @@ WebsocketsServer SocketsServer;
 struct ClientSlot {
   WebsocketsClient* client;
   unsigned long lastActiveMs;
+  bool disconnected;
 };
 std::vector<ClientSlot> clients;
 
@@ -28,6 +29,15 @@ static void touchClient(WebsocketsClient* c) {
   for (size_t i = 0; i < clients.size(); ++i) {
     if (clients[i].client == c) {
       clients[i].lastActiveMs = millis();
+      break;
+    }
+  }
+}
+
+static void markDisconnected(WebsocketsClient* c) {
+  for (size_t i = 0; i < clients.size(); ++i) {
+    if (clients[i].client == c) {
+      clients[i].disconnected = true;
       break;
     }
   }
@@ -315,7 +325,7 @@ void loop() {
       WebsocketsClient* nc = new WebsocketsClient;
       *nc = incoming;  // transfers ownership of the freshly accepted socket
       delay(50);       // settle time
-      clients.push_back({nc, millis()});
+      clients.push_back({nc, millis(), false});
 
       // Wire message + event callbacks so poll() delivers frames
       nc->onMessage([](WebsocketsClient &client, WebsocketsMessage msg){
@@ -327,7 +337,7 @@ void loop() {
         touchClient(&client);
         (void)payload;
         if (evt == WebsocketsEvent::ConnectionClosed) {
-          // Mark as inactive; loop() cleanup will remove
+          markDisconnected(&client);
         }
       });
       handleWebSocketEvent(WS_CONNECTED, "", nc);
@@ -342,21 +352,18 @@ void loop() {
       continue;
     }
 
-    if (c->available()) {
-      // Pump client I/O without blocking
-      c->poll();
-    } else {
-      // Allow short gaps; only drop after 5s of inactivity
-      if (millis() - clients[i].lastActiveMs > 5000) {
-        handleWebSocketEvent(WS_DISCONNECTED, "", c);
-        c->close();
-        delete c;
-        clients.erase(clients.begin() + i);
-      }
+    if (clients[i].disconnected) {
+      handleWebSocketEvent(WS_DISCONNECTED, "", c);
+      c->close();
+      delete c;
+      clients.erase(clients.begin() + i);
+      continue;
     }
+
+    // Pump client I/O without blocking to keep idle clients alive.
+    c->poll();
   }
 
   // small delay for other tasks to run
   delay(1);
 }
-
