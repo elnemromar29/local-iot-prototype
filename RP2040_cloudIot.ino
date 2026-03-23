@@ -323,11 +323,11 @@ void loop() {
     WebsocketsClient incoming = SocketsServer.accept();
     if (incoming.available()) {
       WebsocketsClient* nc = new WebsocketsClient;
-      *nc = incoming;  // transfers ownership of the freshly accepted socket
-      delay(50);       // settle time
+      *nc = incoming;  
+      delay(50);       
       clients.push_back({nc, millis(), false});
 
-      // Wire message + event callbacks so poll() delivers frames
+      
       nc->onMessage([](WebsocketsClient &client, WebsocketsMessage msg){
         touchClient(&client);
         String data = msg.data();
@@ -344,7 +344,7 @@ void loop() {
     }
   }
 
-  // Iterate all clients to read incoming messages or detect disconnection
+  //  read incoming messages or detect disconnection
   for (int i = (int)clients.size() - 1; i >= 0; --i) {
     WebsocketsClient* c = clients[i].client;
     if (!c) {
@@ -360,10 +360,8 @@ void loop() {
       continue;
     }
 
-    // Pump client I/O without blocking to keep idle clients alive.
     c->poll();
   }
 
-  // small delay for other tasks to run
   delay(1);
 }
